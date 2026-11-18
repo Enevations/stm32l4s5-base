@@ -6,6 +6,8 @@
 #include "task.h"
 
 #ifndef NDEBUG
+// OpenOCD uses this symbol to determine the priority range for FreeRTOS thread
+// awareness; keep it in debug builds even when the linker would otherwise drop it.
 extern "C" {
 __attribute__((used)) int uxTopUsedPriority = configMAX_PRIORITIES - 1;
 }
@@ -16,10 +18,13 @@ static UART_HandleTypeDef huart1{};
 // --- FreeRTOS Kernel Hooks ---
 extern "C" {
 
+// Once the scheduler starts, FreeRTOS owns SysTick; keep the HAL millisecond
+// clock in sync by advancing it from each RTOS tick.
 void vApplicationTickHook() {
     HAL_IncTick();
 }
 
+// Fail-stop hooks make allocation and stack failures visible during debugging.
 void vApplicationMallocFailedHook() {
     taskDISABLE_INTERRUPTS();
     while (true) {}
@@ -37,6 +42,7 @@ static void system_clock_config() {
     RCC_OscInitTypeDef osc{};
     RCC_ClkInitTypeDef clk{};
 
+    // Scale 1 supports the selected 80 MHz system clock.
     HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1);
 
     osc.OscillatorType = RCC_OSCILLATORTYPE_MSI;
@@ -46,10 +52,10 @@ static void system_clock_config() {
     osc.PLL.PLLState = RCC_PLL_ON;
     osc.PLL.PLLSource = RCC_PLLSOURCE_MSI;
     osc.PLL.PLLM = 1;
-    osc.PLL.PLLN = 40; // 160 MHz VCO
+    osc.PLL.PLLN = 40; // 4 MHz MSI / 1 * 40 = 160 MHz VCO
     osc.PLL.PLLP = RCC_PLLP_DIV7;
     osc.PLL.PLLQ = RCC_PLLQ_DIV2;
-    osc.PLL.PLLR = RCC_PLLR_DIV2; // 80 MHz SYSCLK
+    osc.PLL.PLLR = RCC_PLLR_DIV2; // SYSCLK = 160 MHz / 2 = 80 MHz
     HAL_RCC_OscConfig(&osc);
 
     clk.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK |
@@ -65,7 +71,7 @@ static void gpio_and_uart_init() {
     __HAL_RCC_GPIOB_CLK_ENABLE();
     __HAL_RCC_USART1_CLK_ENABLE();
 
-    // LD2 Green LED (PB14)
+    // Configure the board's green LD2 as a low-speed push-pull output.
     GPIO_InitTypeDef led{};
     led.Pin = GPIO_PIN_14;
     led.Mode = GPIO_MODE_OUTPUT_PP;
@@ -73,7 +79,7 @@ static void gpio_and_uart_init() {
     led.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(GPIOB, &led);
 
-    // USART1 ST-LINK VCP (PB6=TX, PB7=RX)
+    // Route USART1 to the ST-LINK virtual COM port pins (AF7).
     GPIO_InitTypeDef uart_pins{};
     uart_pins.Pin = GPIO_PIN_6 | GPIO_PIN_7;
     uart_pins.Mode = GPIO_MODE_AF_PP;
@@ -100,6 +106,7 @@ static void blinky_task(void*) {
     char msg[64];
     uint32_t count = 0;
 
+    // UART writes are synchronous; this simple example logs directly from its task.
     const char* banner = "\r\nHello Blinky from STM32L4S5!\r\n";
     HAL_UART_Transmit(&huart1, reinterpret_cast<const uint8_t*>(banner), std::strlen(banner), 100);
 
@@ -116,8 +123,10 @@ int main() {
     system_clock_config();
     gpio_and_uart_init();
 
+    // FreeRTOS stack depths are in words (256 words here), not bytes.
     xTaskCreate(blinky_task, "Blinky", 256, nullptr, tskIDLE_PRIORITY + 1, nullptr);
     vTaskStartScheduler();
 
+    // The scheduler should not return; reaching here indicates startup failure.
     while (true) {}
 }

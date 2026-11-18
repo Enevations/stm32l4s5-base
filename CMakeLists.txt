@@ -9,7 +9,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(FetchContent)
 
-# 1. Fetch ST's official STM32CubeL4 (HAL, CMSIS, and startup_stm32l4s5xx.s)
+# Fetch only the HAL/CMSIS submodules needed to build this firmware. CubeMX and
+# CubeIDE are not part of the build; the firmware is configured in source.
 FetchContent_Declare(
     stm32cubel4
     GIT_REPOSITORY https://github.com/STMicroelectronics/STM32CubeL4.git
@@ -19,7 +20,8 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(stm32cubel4)
 
-# 2. Fetch official FreeRTOS Kernel (Heap 4)
+# Select FreeRTOS's Cortex-M4F port and Heap 4 allocator; the project settings
+# are supplied through the freertos_config interface target.
 FetchContent_Declare(
     freertos_kernel
     GIT_REPOSITORY https://github.com/FreeRTOS/FreeRTOS-Kernel.git
@@ -36,7 +38,8 @@ set(FREERTOS_HEAP 4 CACHE STRING "" FORCE)
 
 FetchContent_MakeAvailable(freertos_kernel)
 
-# 3. Collect required STM32L4 HAL & CMSIS source files
+# Compile the selected HAL drivers and include ST's CMSIS system clock code and
+# STM32L4S5 startup/vector table.
 set(CUBE_DRIVERS "${stm32cubel4_SOURCE_DIR}/Drivers")
 
 set(HAL_SOURCES
@@ -69,6 +72,7 @@ add_executable(${PROJECT_NAME}.elf
 target_compile_definitions(${PROJECT_NAME}.elf PRIVATE
     USE_HAL_DRIVER
     STM32L4S5xx
+    # Release disables debug-only FreeRTOS thread-awareness metadata.
     $<$<CONFIG:Release>:NDEBUG>
 )
 
@@ -83,6 +87,7 @@ target_include_directories(${PROJECT_NAME}.elf PRIVATE
 target_compile_options(${PROJECT_NAME}.elf PRIVATE
     -Wall
     -Wextra
+    # Keep the C++ runtime small for this bare-metal firmware.
     $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions -fno-rtti -fno-threadsafe-statics>
     $<$<CONFIG:Debug>:-Og -g3>
     $<$<CONFIG:Release>:-Os -flto>
@@ -94,6 +99,7 @@ target_link_libraries(${PROJECT_NAME}.elf PRIVATE
 
 target_link_options(${PROJECT_NAME}.elf PRIVATE
     -T${CMAKE_SOURCE_DIR}/STM32L4S5VITx_FLASH.ld
+    # Preserve a map for memory inspection and cross-reference symbols.
     -Wl,-Map=${PROJECT_BINARY_DIR}/${PROJECT_NAME}.map,--cref
     $<$<CONFIG:Release>:-Os -flto>
 )

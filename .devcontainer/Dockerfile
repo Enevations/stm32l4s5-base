@@ -1,3 +1,5 @@
+# Build and GDB tools run in the container; OpenOCD accesses the board from
+# the Windows host.
 FROM debian:trixie
 
 ENV DEBIAN_FRONTEND=noninteractive

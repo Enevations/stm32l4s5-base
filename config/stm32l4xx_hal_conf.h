@@ -1,5 +1,7 @@
 #pragma once
 
+/* HAL_MODULE_ENABLED and the module switches below control which HAL headers
+ * and driver modules are available to this firmware. */
 #define HAL_MODULE_ENABLED
 #define HAL_CORTEX_MODULE_ENABLED
 #define HAL_DMA_MODULE_ENABLED
@@ -25,6 +27,8 @@
 
 #define VDD_VALUE                   3300U
 #define TICK_INT_PRIORITY           0x0FU
+/* Keep HAL's RTOS integration disabled; FreeRTOS provides the scheduler and
+ * main.cpp advances HAL time from the FreeRTOS tick hook. */
 #define USE_RTOS                    0U
 #define PREFETCH_ENABLE             1U
 #define INSTRUCTION_CACHE_ENABLE    1U
